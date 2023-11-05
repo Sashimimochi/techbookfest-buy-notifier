@@ -68,7 +68,7 @@ function getTargetSheet(sheetName){
 
 function getStartDate(sheetName) {
   // 集計の開始日を取得する
-  // 基本的には技術書展の開催日
+  // 基本的には技術書典の開催日
   var sheet = getTargetSheet(sheetName);
 
   var startDate = sheet.getRange("A2").getValue();
