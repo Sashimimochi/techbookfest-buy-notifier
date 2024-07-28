@@ -64,14 +64,14 @@ function extBookTitle(message, titles) {
 
 function getTargetSheet(sheetName){
   // 集計結果を書き込むスプレッドシートを取得
-  var spread = SpreadsheetApp.openById("xxx"); // ココにスプレッドシートのIDを記載する
+  var spread = SpreadsheetApp.openById("XXX"); // ココにスプレッドシートのIDを記載する
   var sheet = spread.getSheetByName(sheetName);
   return sheet;
 }
 
 function getStartDate(sheetName) {
   // 集計の開始日を取得する
-  // 基本的には技術書展の開催日
+  // 基本的には技術書典の開催日
   var sheet = getTargetSheet(sheetName);
 
   var startDate = sheet.getRange("A2").getValue();
@@ -140,13 +140,13 @@ function createLineChartWithMultipleSeries(sheetName, maxRow) {
   })
 
   // グラフを描画する範囲
-  const dataRange = sheet.getRange(1,1,maxRow,7);
+  const dataRange = sheet.getRange(1,1,maxRow,5);
 
   const chart = sheet.newChart()
   .asBarChart()
   .addRange(dataRange)
   .setChartType(Charts.ChartType.BAR)
-  .setPosition(2, 10, 0, 0)
+  .setPosition(2, 7, 0, 0)
   .setOption("useFirstColumnAsDomain", "true")
   .setNumHeaders(1)
   .setOption("legend", {position: "bottom"})
@@ -245,6 +245,7 @@ function calcBuyData(message) {
     "BookA": 2,
     "BookB": 3,
     "BookC": 4,
+    "BookD": 5,
   }
   const titles = Object.keys(columnMap);
   const bookTitle = extBookTitle(message, titles);
