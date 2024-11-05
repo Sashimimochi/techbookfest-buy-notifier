@@ -24,15 +24,35 @@ function checkBuyMail() {
 }
 
 function create_message(message) {
-  var body = extMessage(message.getPlainBody().split(/\r\n|\n/));
-  return `:book:${message.getSubject()}:shopping_trolley:${body}\n`
+  var body = extMessage(getMessageBodyAsText(message));
+  return `:book:${message.getSubject()}:shopping_trolley:${body}\n`;
+}
+
+function getMessageBodyAsText(message) {
+  // HTMLメールかプレーンテキストかを確認し、HTMLメールの場合はテキスト化する
+  var htmlBody = message.getBody();
+  if (htmlBody) {
+    return convertHtmlToText(htmlBody).split(/\r\n|\n/);
+  } else {
+    return message.getPlainBody().split(/\r\n|\n/);
+  }
+}
+
+function convertHtmlToText(html) {
+  // HTMLタグを削除し、テキストのみを抽出
+  return html.replace(/<[^>]+>/g, '');
 }
 
 function extMessage(texts) {
-  for (var i=0; i < texts.length; i++) {
-    const result = texts[i].match(/.*販売形態 :.*/);
-    if (result !== null) { return result }
+  const keywords = ["電子版", "電子+紙", "会場（電子＋紙）", "会場（電子版）"];
+  for (var i = 0; i < texts.length; i++) {
+    for (var j = 0; j < keywords.length; j++) {
+      if (texts[i].includes(keywords[j])) {
+        return keywords[j];
+      }
+    }
   }
+  return "販売形態が見つかりません";
 }
 
 function sendTextToSlack(text, webhookUrl) {
