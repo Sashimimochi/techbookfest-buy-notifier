@@ -44,7 +44,7 @@ function convertHtmlToText(html) {
 }
 
 function extMessage(texts) {
-  const keywords = ["電子版", "電子+紙", "会場（電子＋紙）", "会場（電子版）"];
+  const keywords = ["電子版", "電子&#43;紙", "会場（電子&#43;紙）", "会場（電子版）"];
   for (var i = 0; i < texts.length; i++) {
     for (var j = 0; j < keywords.length; j++) {
       if (texts[i].includes(keywords[j])) {
