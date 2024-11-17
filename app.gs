@@ -55,6 +55,11 @@ function extMessage(texts) {
   return "販売形態が見つかりません";
 }
 
+function decodeHtmlEntities(text) {
+  // HTMLエンコードされた文字をデコード
+  return text.replace(/&#43;/g, '+');
+}
+
 function sendTextToSlack(text, webhookUrl) {
   const data = { "text": text }
   var payload = JSON.stringify(data);
