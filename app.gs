@@ -23,7 +23,10 @@ const SLACK_WEBHOOK_URLS = [
   "https://hooks.slack.com/services/yyy",
 ];
 
-// グラフ投稿用のSlack設定（最初のWebhook URLを使用する場合に有効）
+// グラフ投稿用のWebhook URL（SLACK_WEBHOOK_URLSの中からグラフを投稿するURLを指定する）
+const CHART_WEBHOOK_URL = "https://hooks.slack.com/services/xxx"; // グラフを投稿したいWebhook URLを指定
+
+// グラフ投稿用のSlack設定
 const SLACK_BOT_TOKEN = "xoxb-xxx"; // ココにBot User OAuth Tokenを記載する
 const SLACK_CHANNEL_ID = "xxx"; // ココに通知先のチャンネルIDを記載する
 
@@ -37,7 +40,7 @@ const CHART_POSITION_COLUMN_OFFSET = 2; // 書籍列の右側に配置するた�
 
 /**
  * 書籍リストから列番号のマップを生成する
- * @return {Object} 書籍名をキー、列番号（2から開始）を値とするオブジェクト
+ * @return {Object} 書籍名をキー、列番号（1列目は日付、2列目から書籍データ）を値とするオブジェクト
  */
 function createColumnMap() {
   const columnMap = {};
@@ -86,7 +89,7 @@ function checkBuyMail() {
       const text = create_message(message);
       SLACK_WEBHOOK_URLS.forEach((webhookUrl) => {
         sendTextToSlack(text, webhookUrl);
-        if (webhookUrl === SLACK_WEBHOOK_URLS[0]) { // 最初のWebhook URLの場合、グラフを投稿する
+        if (webhookUrl === CHART_WEBHOOK_URL) { // グラフを投稿するWebhook URLの場合
           calcBuyData(message);
         }
       });
