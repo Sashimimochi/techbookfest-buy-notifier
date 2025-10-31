@@ -17,14 +17,11 @@ const SPREADSHEET_ID = "XXX"; // ココにスプレッドシートのIDを記載
 // イベント名（シート名）
 const EVENT_NAME = "xxx"; // ココに該当のスプレッドシートの該当シート名を記載する
 
-// Slack Webhook URLs
+// Slack Webhook URLs（postChart: trueのURLにはグラフも投稿される）
 const SLACK_WEBHOOK_URLS = [
-  "https://hooks.slack.com/services/xxx",
-  "https://hooks.slack.com/services/yyy",
+  { url: "https://hooks.slack.com/services/xxx", postChart: true },
+  { url: "https://hooks.slack.com/services/yyy", postChart: false },
 ];
-
-// グラフ投稿用のWebhook URL（SLACK_WEBHOOK_URLSの中からグラフを投稿するURLを指定する）
-const CHART_WEBHOOK_URL = "https://hooks.slack.com/services/xxx"; // グラフを投稿したいWebhook URLを指定
 
 // グラフ投稿用のSlack設定
 const SLACK_BOT_TOKEN = "xoxb-xxx"; // ココにBot User OAuth Tokenを記載する
@@ -87,9 +84,9 @@ function checkBuyMail() {
     thread.getMessages().forEach((message) => {
       if(!message.isUnread()) { return }
       const text = create_message(message);
-      SLACK_WEBHOOK_URLS.forEach((webhookUrl) => {
-        sendTextToSlack(text, webhookUrl);
-        if (webhookUrl === CHART_WEBHOOK_URL) { // グラフを投稿するWebhook URLの場合
+      SLACK_WEBHOOK_URLS.forEach((webhook) => {
+        sendTextToSlack(text, webhook.url);
+        if (webhook.postChart) { // グラフを投稿するフラグが立っている場合
           calcBuyData(message);
         }
       });
