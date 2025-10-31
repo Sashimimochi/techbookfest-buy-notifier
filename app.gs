@@ -1,6 +1,57 @@
+// ========================================
+// 設定セクション
+// ========================================
+
+/**
+ * スクリプトプロパティから書籍リストを取得する
+ * @return {Array<string>} 書籍タイトルの配列
+ */
+function getBookTitles() {
+  const properties = PropertiesService.getScriptProperties();
+  const bookTitlesStr = properties.getProperty('BOOK_TITLES');
+  
+  if (!bookTitlesStr) {
+    throw new Error('BOOK_TITLESが設定されていません。スクリプトプロパティに設定してください。');
+  }
+  
+  return JSON.parse(bookTitlesStr);
+}
+
+/**
+ * スクリプトプロパティからスプレッドシートIDを取得する
+ * @return {string} スプレッドシートID
+ */
+function getSpreadsheetId() {
+  const properties = PropertiesService.getScriptProperties();
+  const spreadsheetId = properties.getProperty('SPREADSHEET_ID');
+  
+  if (!spreadsheetId) {
+    throw new Error('SPREADSHEET_IDが設定されていません。スクリプトプロパティに設定してください。');
+  }
+  
+  return spreadsheetId;
+}
+
+/**
+ * スクリプトプロパティからイベント名を取得する
+ * @return {string} イベント名（シート名）
+ */
+function getEventName() {
+  const properties = PropertiesService.getScriptProperties();
+  const eventName = properties.getProperty('EVENT_SHEET_NAME');
+  
+  if (!eventName) {
+    throw new Error('EVENT_SHEET_NAMEが設定されていません。スクリプトプロパティに設定してください。');
+  }
+  
+  return eventName;
+}
+
+/**
+ * スクリプトプロパティからSlack Webhook URLsを取得する
+ * @return {Array<{url: string, postChart: boolean}>} Webhook URLの配列
+ */
 function getSlackWebhookUrls() {
-  // スクリプトプロパティからSlackのWebhook URLを取得する
-  // 複数のWebhook URLを設定する場合はカンマ区切りで指定する
   const properties = PropertiesService.getScriptProperties();
   const webhookUrlsStr = properties.getProperty('SLACK_WEBHOOK_URLS');
   
@@ -8,8 +59,87 @@ function getSlackWebhookUrls() {
     throw new Error('SLACK_WEBHOOK_URLsが設定されていません。スクリプトプロパティに設定してください。');
   }
   
-  return webhookUrlsStr.split(',').map(url => url.trim());
+  return JSON.parse(webhookUrlsStr);
 }
+
+/**
+ * スクリプトプロパティからSlack Bot Tokenを取得する
+ * @return {string} Slack Bot Token
+ */
+function getSlackBotToken() {
+  const properties = PropertiesService.getScriptProperties();
+  const token = properties.getProperty('SLACK_BOT_TOKEN');
+  
+  if (!token) {
+    throw new Error('SLACK_BOT_TOKENが設定されていません。スクリプトプロパティに設定してください。');
+  }
+  
+  return token;
+}
+
+/**
+ * スクリプトプロパティからSlack Channel IDを取得する
+ * @return {string} Slack Channel ID
+ */
+function getSlackChannelId() {
+  const properties = PropertiesService.getScriptProperties();
+  const channelId = properties.getProperty('SLACK_CHANNEL_ID');
+  
+  if (!channelId) {
+    throw new Error('SLACK_CHANNEL_IDが設定されていません。スクリプトプロパティに設定してください。');
+  }
+  
+  return channelId;
+}
+
+// グラフ配置の設定
+const CHART_POSITION_ROW = 2;
+const CHART_POSITION_COLUMN_OFFSET = 2; // 書籍列の右側に配置するための列オフセット
+
+// ========================================
+// ヘルパー関数
+// ========================================
+
+/**
+ * 書籍リストから列番号のマップを生成する
+ * @return {Object} 書籍名をキー、列番号（1列目は日付、2列目から書籍データ）を値とするオブジェクト
+ */
+function createColumnMap() {
+  const bookTitles = getBookTitles();
+  const columnMap = {};
+  bookTitles.forEach((title, index) => {
+    columnMap[title] = index + 2; // 列番号は2から開始（1列目は日付用）
+  });
+  return columnMap;
+}
+
+/**
+ * 書籍の総数を取得する
+ * @return {number} 書籍の総数
+ */
+function getBookCount() {
+  return getBookTitles().length;
+}
+
+/**
+ * グラフ描画に使用する総列数を取得する（日付列 + 書籍列）
+ * @return {number} 総列数
+ */
+function getTotalColumns() {
+  return 1 + getBookCount(); // 1列目（日付）+ 書籍の列数
+}
+
+/**
+ * グラフ配置の列位置を取得する
+ * @return {number} グラフを配置する列番号
+ */
+function getChartPositionColumn() {
+  return getTotalColumns() + CHART_POSITION_COLUMN_OFFSET;
+}
+
+// ========================================
+// メイン処理
+// ========================================
 
 function checkBuyMail() {
   // 該当のメールを検索
@@ -21,15 +151,9 @@ function checkBuyMail() {
       if(!message.isUnread()) { return }
       const text = create_message(message);
       const webhookUrls = getSlackWebhookUrls();
-      const primaryWebhookUrl = PropertiesService.getScriptProperties().getProperty('SLACK_PRIMARY_WEBHOOK_URL');
-      
-      if (!primaryWebhookUrl) {
-        throw new Error('SLACK_PRIMARY_WEBHOOK_URLが設定されていません。スクリプトプロパティに設定してください。');
-      }
-      
-      webhookUrls.forEach((webhookUrl) => {
-        sendTextToSlack(text, webhookUrl);
-        if (webhookUrl === primaryWebhookUrl) { // 画像を投稿する場合
+      webhookUrls.forEach((webhook) => {
+        sendTextToSlack(text, webhook.url);
+        if (webhook.postChart) { // グラフを投稿するフラグが立っている場合
           calcBuyData(message);
         }
       });
@@ -105,13 +229,7 @@ function extBookTitle(message, titles) {
 
 function getTargetSheet(sheetName){
   // 集計結果を書き込むスプレッドシートを取得
-  const properties = PropertiesService.getScriptProperties();
-  const spreadsheetId = properties.getProperty('SPREADSHEET_ID');
-  
-  if (!spreadsheetId) {
-    throw new Error('SPREADSHEET_IDが設定されていません。スクリプトプロパティに設定してください。');
-  }
-  
+  const spreadsheetId = getSpreadsheetId();
   var spread = SpreadsheetApp.openById(spreadsheetId);
   var sheet = spread.getSheetByName(sheetName);
   return sheet;
@@ -187,14 +305,18 @@ function createLineChartWithMultipleSeries(sheetName, maxRow) {
     sheet.removeChart(c);
   })
 
-  // グラフを描画する範囲
-  const dataRange = sheet.getRange(1,1,maxRow,5);
+  // グラフを描画する範囲（日付列 + 書籍の列数分）
+  const totalColumns = getTotalColumns();
+  const dataRange = sheet.getRange(1, 1, maxRow, totalColumns);
+
+  // グラフの配置位置を動的に計算
+  const chartColumn = getChartPositionColumn();
 
   const chart = sheet.newChart()
   .asBarChart()
   .addRange(dataRange)
   .setChartType(Charts.ChartType.BAR)
-  .setPosition(2, 7, 0, 0)
+  .setPosition(CHART_POSITION_ROW, chartColumn, 0, 0)
   .setOption("useFirstColumnAsDomain", "true")
   .setNumHeaders(1)
   .setOption("legend", {position: "bottom"})
@@ -209,16 +331,8 @@ function sendChartToSlack(chart) {
   var chartImage = chart.getBlob().getAs("image/png").setName(fileName);
   var fileSize = chartImage.getBytes().length;
 
-  const properties = PropertiesService.getScriptProperties();
-  var token = properties.getProperty('SLACK_BOT_TOKEN');
-  var channel = properties.getProperty('SLACK_CHANNEL_ID');
-  
-  if (!token) {
-    throw new Error('SLACK_BOT_TOKENが設定されていません。スクリプトプロパティに設定してください。');
-  }
-  if (!channel) {
-    throw new Error('SLACK_CHANNEL_IDが設定されていません。スクリプトプロパティに設定してください。');
-  }
+  const token = getSlackBotToken();
+  const channel = getSlackChannelId();
 
   // Step 1: Get Upload URL and File ID
   var uploadInfo = getSlackUploadURL(token, fileSize, fileName);
@@ -293,32 +407,15 @@ function completeSlackFileUpload(token, fileId, channel) {
 }
 
 function calcBuyData(message) {
-  // シート名を指定する
-  const properties = PropertiesService.getScriptProperties();
-  const event = properties.getProperty('EVENT_SHEET_NAME');
-  
-  if (!event) {
-    throw new Error('EVENT_SHEET_NAMEが設定されていません。スクリプトプロパティに設定してください。');
-  }
-  
-  // 書籍のタイトル一覧を記載する
-  // key がタイトルで value がスプレッドシートの列番号
-  const columnMapStr = properties.getProperty('BOOK_COLUMN_MAP');
-  if (!columnMapStr) {
-    throw new Error('BOOK_COLUMN_MAPが設定されていません。スクリプトプロパティに設定してください。');
-  }
-  
-  let columnMap;
-  try {
-    columnMap = JSON.parse(columnMapStr);
-  } catch (e) {
-    throw new Error('BOOK_COLUMN_MAPのJSON形式が不正です。正しいJSON形式で設定してください。エラー: ' + e.message);
-  }
-  const titles = Object.keys(columnMap);
+  // 書籍リストから列番号のマップを動的に生成
+  const columnMap = createColumnMap();
+  const titles = getBookTitles();
+  const eventName = getEventName();
+
   const bookTitle = extBookTitle(message, titles);
-  var startDate = getStartDate(event);
+  var startDate = getStartDate(eventName);
   var diffDays = calcDiffDates(startDate);
-  writeDatesFromStartDate(event);
-  incrementCellValue(event, diffDays+1, bookTitle, columnMap);
-  createLineChartWithMultipleSeries(event, diffDays+1);
+  writeDatesFromStartDate(eventName);
+  incrementCellValue(eventName, diffDays+1, bookTitle, columnMap);
+  createLineChartWithMultipleSeries(eventName, diffDays+1);
 }
