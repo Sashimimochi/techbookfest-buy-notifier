@@ -339,7 +339,7 @@ function calcBuyData(message) {
   // 書籍リストから列番号のマップを動的に生成
   const columnMap = createColumnMap();
   const titles = BOOK_TITLES;
-  
+
   const bookTitle = extBookTitle(message, titles);
   var startDate = getStartDate(EVENT_NAME);
   var diffDays = calcDiffDates(startDate);
