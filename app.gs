@@ -2,30 +2,95 @@
 // 設定セクション
 // ========================================
 
-// 書籍リスト: ここに管理する書籍のタイトルを配列で記載する
-// 新しい書籍を追加する場合はこのリストに追加するだけでOK
-const BOOK_TITLES = [
-  "BookA",
-  "BookB",
-  "BookC",
-  "BookD",
-];
+/**
+ * スクリプトプロパティから書籍リストを取得する
+ * @return {Array<string>} 書籍タイトルの配列
+ */
+function getBookTitles() {
+  const properties = PropertiesService.getScriptProperties();
+  const bookTitlesStr = properties.getProperty('BOOK_TITLES');
+  
+  if (!bookTitlesStr) {
+    throw new Error('BOOK_TITLESが設定されていません。スクリプトプロパティに設定してください。');
+  }
+  
+  return JSON.parse(bookTitlesStr);
+}
 
-// スプレッドシートID
-const SPREADSHEET_ID = "XXX"; // ココにスプレッドシートのIDを記載する
+/**
+ * スクリプトプロパティからスプレッドシートIDを取得する
+ * @return {string} スプレッドシートID
+ */
+function getSpreadsheetId() {
+  const properties = PropertiesService.getScriptProperties();
+  const spreadsheetId = properties.getProperty('SPREADSHEET_ID');
+  
+  if (!spreadsheetId) {
+    throw new Error('SPREADSHEET_IDが設定されていません。スクリプトプロパティに設定してください。');
+  }
+  
+  return spreadsheetId;
+}
 
-// イベント名（シート名）
-const EVENT_NAME = "xxx"; // ココに該当のスプレッドシートの該当シート名を記載する
+/**
+ * スクリプトプロパティからイベント名を取得する
+ * @return {string} イベント名（シート名）
+ */
+function getEventName() {
+  const properties = PropertiesService.getScriptProperties();
+  const eventName = properties.getProperty('EVENT_SHEET_NAME');
+  
+  if (!eventName) {
+    throw new Error('EVENT_SHEET_NAMEが設定されていません。スクリプトプロパティに設定してください。');
+  }
+  
+  return eventName;
+}
 
-// Slack Webhook URLs（postChart: trueのURLにはグラフも投稿される）
-const SLACK_WEBHOOK_URLS = [
-  { url: "https://hooks.slack.com/services/xxx", postChart: true },
-  { url: "https://hooks.slack.com/services/yyy", postChart: false },
-];
+/**
+ * スクリプトプロパティからSlack Webhook URLsを取得する
+ * @return {Array<{url: string, postChart: boolean}>} Webhook URLの配列
+ */
+function getSlackWebhookUrls() {
+  const properties = PropertiesService.getScriptProperties();
+  const webhookUrlsStr = properties.getProperty('SLACK_WEBHOOK_URLS');
+  
+  if (!webhookUrlsStr) {
+    throw new Error('SLACK_WEBHOOK_URLsが設定されていません。スクリプトプロパティに設定してください。');
+  }
+  
+  return JSON.parse(webhookUrlsStr);
+}
 
-// グラフ投稿用のSlack設定
-const SLACK_BOT_TOKEN = "xoxb-xxx"; // ココにBot User OAuth Tokenを記載する
-const SLACK_CHANNEL_ID = "xxx"; // ココに通知先のチャンネルIDを記載する
+/**
+ * スクリプトプロパティからSlack Bot Tokenを取得する
+ * @return {string} Slack Bot Token
+ */
+function getSlackBotToken() {
+  const properties = PropertiesService.getScriptProperties();
+  const token = properties.getProperty('SLACK_BOT_TOKEN');
+  
+  if (!token) {
+    throw new Error('SLACK_BOT_TOKENが設定されていません。スクリプトプロパティに設定してください。');
+  }
+  
+  return token;
+}
+
+/**
+ * スクリプトプロパティからSlack Channel IDを取得する
+ * @return {string} Slack Channel ID
+ */
+function getSlackChannelId() {
+  const properties = PropertiesService.getScriptProperties();
+  const channelId = properties.getProperty('SLACK_CHANNEL_ID');
+  
+  if (!channelId) {
+    throw new Error('SLACK_CHANNEL_IDが設定されていません。スクリプトプロパティに設定してください。');
+  }
+  
+  return channelId;
+}
 
 // グラフ配置の設定
 const CHART_POSITION_ROW = 2;
@@ -40,8 +105,9 @@ const CHART_POSITION_COLUMN_OFFSET = 2; // 書籍列の右側に配置するた�
  * @return {Object} 書籍名をキー、列番号（1列目は日付、2列目から書籍データ）を値とするオブジェクト
  */
 function createColumnMap() {
+  const bookTitles = getBookTitles();
   const columnMap = {};
-  BOOK_TITLES.forEach((title, index) => {
+  bookTitles.forEach((title, index) => {
     columnMap[title] = index + 2; // 列番号は2から開始（1列目は日付用）
   });
   return columnMap;
@@ -52,7 +118,7 @@ function createColumnMap() {
  * @return {number} 書籍の総数
  */
 function getBookCount() {
-  return BOOK_TITLES.length;
+  return getBookTitles().length;
 }
 
 /**
@@ -84,7 +150,8 @@ function checkBuyMail() {
     thread.getMessages().forEach((message) => {
       if(!message.isUnread()) { return }
       const text = create_message(message);
-      SLACK_WEBHOOK_URLS.forEach((webhook) => {
+      const webhookUrls = getSlackWebhookUrls();
+      webhookUrls.forEach((webhook) => {
         sendTextToSlack(text, webhook.url);
         if (webhook.postChart) { // グラフを投稿するフラグが立っている場合
           calcBuyData(message);
@@ -162,7 +229,8 @@ function extBookTitle(message, titles) {
 
 function getTargetSheet(sheetName){
   // 集計結果を書き込むスプレッドシートを取得
-  var spread = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const spreadsheetId = getSpreadsheetId();
+  var spread = SpreadsheetApp.openById(spreadsheetId);
   var sheet = spread.getSheetByName(sheetName);
   return sheet;
 }
@@ -263,8 +331,11 @@ function sendChartToSlack(chart) {
   var chartImage = chart.getBlob().getAs("image/png").setName(fileName);
   var fileSize = chartImage.getBytes().length;
 
+  const token = getSlackBotToken();
+  const channel = getSlackChannelId();
+
   // Step 1: Get Upload URL and File ID
-  var uploadInfo = getSlackUploadURL(SLACK_BOT_TOKEN, fileSize, fileName);
+  var uploadInfo = getSlackUploadURL(token, fileSize, fileName);
   var uploadUrl = uploadInfo.upload_url;
   var fileId = uploadInfo.file_id;
 
@@ -272,7 +343,7 @@ function sendChartToSlack(chart) {
   uploadFileToSlack(uploadUrl, chartImage);
 
   // Step 3: Complete the file upload and post it to the channel
-  completeSlackFileUpload(SLACK_BOT_TOKEN, fileId, SLACK_CHANNEL_ID);
+  completeSlackFileUpload(token, fileId, channel);
 }
 
 function getSlackUploadURL(token, fileSize, fileName) {
@@ -338,12 +409,13 @@ function completeSlackFileUpload(token, fileId, channel) {
 function calcBuyData(message) {
   // 書籍リストから列番号のマップを動的に生成
   const columnMap = createColumnMap();
-  const titles = BOOK_TITLES;
+  const titles = getBookTitles();
+  const eventName = getEventName();
 
   const bookTitle = extBookTitle(message, titles);
-  var startDate = getStartDate(EVENT_NAME);
+  var startDate = getStartDate(eventName);
   var diffDays = calcDiffDates(startDate);
-  writeDatesFromStartDate(EVENT_NAME);
-  incrementCellValue(EVENT_NAME, diffDays+1, bookTitle, columnMap);
-  createLineChartWithMultipleSeries(EVENT_NAME, diffDays+1);
+  writeDatesFromStartDate(eventName);
+  incrementCellValue(eventName, diffDays+1, bookTitle, columnMap);
+  createLineChartWithMultipleSeries(eventName, diffDays+1);
 }
