@@ -1,3 +1,80 @@
+// ========================================
+// 設定セクション
+// ========================================
+
+// 書籍リスト: ここに管理する書籍のタイトルを配列で記載する
+// 新しい書籍を追加する場合はこのリストに追加するだけでOK
+const BOOK_TITLES = [
+  "BookA",
+  "BookB",
+  "BookC",
+  "BookD",
+];
+
+// スプレッドシートID
+const SPREADSHEET_ID = "XXX"; // ココにスプレッドシートのIDを記載する
+
+// イベント名（シート名）
+const EVENT_NAME = "xxx"; // ココに該当のスプレッドシートの該当シート名を記載する
+
+// Slack Webhook URLs
+const SLACK_WEBHOOK_URLS = [
+  "https://hooks.slack.com/services/xxx",
+  "https://hooks.slack.com/services/yyy",
+];
+
+// グラフ投稿用のSlack設定（最初のWebhook URLを使用する場合に有効）
+const SLACK_BOT_TOKEN = "xoxb-xxx"; // ココにBot User OAuth Tokenを記載する
+const SLACK_CHANNEL_ID = "xxx"; // ココに通知先のチャンネルIDを記載する
+
+// グラフ配置の設定
+const CHART_POSITION_ROW = 2;
+const CHART_POSITION_COLUMN_OFFSET = 2; // 書籍列の右側に配置するための列オフセット
+
+// ========================================
+// ヘルパー関数
+// ========================================
+
+/**
+ * 書籍リストから列番号のマップを生成する
+ * @return {Object} 書籍名をキー、列番号（2から開始）を値とするオブジェクト
+ */
+function createColumnMap() {
+  const columnMap = {};
+  BOOK_TITLES.forEach((title, index) => {
+    columnMap[title] = index + 2; // 列番号は2から開始（1列目は日付用）
+  });
+  return columnMap;
+}
+
+/**
+ * 書籍の総数を取得する
+ * @return {number} 書籍の総数
+ */
+function getBookCount() {
+  return BOOK_TITLES.length;
+}
+
+/**
+ * グラフ描画に使用する総列数を取得する（日付列 + 書籍列）
+ * @return {number} 総列数
+ */
+function getTotalColumns() {
+  return 1 + getBookCount(); // 1列目（日付）+ 書籍の列数
+}
+
+/**
+ * グラフ配置の列位置を取得する
+ * @return {number} グラフを配置する列番号
+ */
+function getChartPositionColumn() {
+  return getTotalColumns() + CHART_POSITION_COLUMN_OFFSET;
+}
+
+// ========================================
+// メイン処理
+// ========================================
+
 function checkBuyMail() {
   // 該当のメールを検索
   // 受信トレイにある未開封のメールのうち、「ファン」というキーワードが含まれているメールを拾ってくる
@@ -7,13 +84,9 @@ function checkBuyMail() {
     thread.getMessages().forEach((message) => {
       if(!message.isUnread()) { return }
       const text = create_message(message);
-      const webhookUrls = [ // ココに通知先のSlackのWebhook URLを入れる。複数の通知先に送りたい場合はカンマ区切りで指定する。
-        "https://hooks.slack.com/services/xxx",
-        "https://hooks.slack.com/services/yyy",
-      ]
-      webhookUrls.forEach((webhookUrl) => {
+      SLACK_WEBHOOK_URLS.forEach((webhookUrl) => {
         sendTextToSlack(text, webhookUrl);
-        if (webhookUrl === "https://hooks.slack.com/services/xxx") { // 画像を投稿する場合
+        if (webhookUrl === SLACK_WEBHOOK_URLS[0]) { // 最初のWebhook URLの場合、グラフを投稿する
           calcBuyData(message);
         }
       });
@@ -89,7 +162,7 @@ function extBookTitle(message, titles) {
 
 function getTargetSheet(sheetName){
   // 集計結果を書き込むスプレッドシートを取得
-  var spread = SpreadsheetApp.openById("XXX"); // ココにスプレッドシートのIDを記載する
+  var spread = SpreadsheetApp.openById(SPREADSHEET_ID);
   var sheet = spread.getSheetByName(sheetName);
   return sheet;
 }
@@ -164,14 +237,18 @@ function createLineChartWithMultipleSeries(sheetName, maxRow) {
     sheet.removeChart(c);
   })
 
-  // グラフを描画する範囲
-  const dataRange = sheet.getRange(1,1,maxRow,5);
+  // グラフを描画する範囲（日付列 + 書籍の列数分）
+  const totalColumns = getTotalColumns();
+  const dataRange = sheet.getRange(1, 1, maxRow, totalColumns);
+
+  // グラフの配置位置を動的に計算
+  const chartColumn = getChartPositionColumn();
 
   const chart = sheet.newChart()
   .asBarChart()
   .addRange(dataRange)
   .setChartType(Charts.ChartType.BAR)
-  .setPosition(2, 7, 0, 0)
+  .setPosition(CHART_POSITION_ROW, chartColumn, 0, 0)
   .setOption("useFirstColumnAsDomain", "true")
   .setNumHeaders(1)
   .setOption("legend", {position: "bottom"})
@@ -186,11 +263,8 @@ function sendChartToSlack(chart) {
   var chartImage = chart.getBlob().getAs("image/png").setName(fileName);
   var fileSize = chartImage.getBytes().length;
 
-  var token = "xoxb-xxx"; // ココにBot User OAuth Tokenを記載する
-  var channel = "xxx"; // ココに通知先のチャンネルIDを記載する
-
   // Step 1: Get Upload URL and File ID
-  var uploadInfo = getSlackUploadURL(token, fileSize, fileName);
+  var uploadInfo = getSlackUploadURL(SLACK_BOT_TOKEN, fileSize, fileName);
   var uploadUrl = uploadInfo.upload_url;
   var fileId = uploadInfo.file_id;
 
@@ -198,7 +272,7 @@ function sendChartToSlack(chart) {
   uploadFileToSlack(uploadUrl, chartImage);
 
   // Step 3: Complete the file upload and post it to the channel
-  completeSlackFileUpload(token, fileId, channel);
+  completeSlackFileUpload(SLACK_BOT_TOKEN, fileId, SLACK_CHANNEL_ID);
 }
 
 function getSlackUploadURL(token, fileSize, fileName) {
@@ -262,21 +336,14 @@ function completeSlackFileUpload(token, fileId, channel) {
 }
 
 function calcBuyData(message) {
-  // シート名を指定する
-  const event = "xxx"; // ココに該当のスプレッドシートの該当シート名を記載する
-  // 書籍のタイトル一覧を記載する
-  // key がタイトルで value がスプレッドシートの列番号
-  const columnMap = {
-    "BookA": 2,
-    "BookB": 3,
-    "BookC": 4,
-    "BookD": 5,
-  }
-  const titles = Object.keys(columnMap);
+  // 書籍リストから列番号のマップを動的に生成
+  const columnMap = createColumnMap();
+  const titles = BOOK_TITLES;
+  
   const bookTitle = extBookTitle(message, titles);
-  var startDate = getStartDate(event);
+  var startDate = getStartDate(EVENT_NAME);
   var diffDays = calcDiffDates(startDate);
-  writeDatesFromStartDate(event);
-  incrementCellValue(event, diffDays+1, bookTitle, columnMap);
-  createLineChartWithMultipleSeries(event, diffDays+1);
+  writeDatesFromStartDate(EVENT_NAME);
+  incrementCellValue(EVENT_NAME, diffDays+1, bookTitle, columnMap);
+  createLineChartWithMultipleSeries(EVENT_NAME, diffDays+1);
 }
