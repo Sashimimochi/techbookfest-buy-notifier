@@ -22,6 +22,11 @@ function checkBuyMail() {
       const text = create_message(message);
       const webhookUrls = getSlackWebhookUrls();
       const primaryWebhookUrl = PropertiesService.getScriptProperties().getProperty('SLACK_PRIMARY_WEBHOOK_URL');
+      
+      if (!primaryWebhookUrl) {
+        throw new Error('SLACK_PRIMARY_WEBHOOK_URLが設定されていません。スクリプトプロパティに設定してください。');
+      }
+      
       webhookUrls.forEach((webhookUrl) => {
         sendTextToSlack(text, webhookUrl);
         if (webhookUrl === primaryWebhookUrl) { // 画像を投稿する場合
@@ -303,7 +308,12 @@ function calcBuyData(message) {
     throw new Error('BOOK_COLUMN_MAPが設定されていません。スクリプトプロパティに設定してください。');
   }
   
-  const columnMap = JSON.parse(columnMapStr);
+  let columnMap;
+  try {
+    columnMap = JSON.parse(columnMapStr);
+  } catch (e) {
+    throw new Error('BOOK_COLUMN_MAPのJSON形式が不正です。正しいJSON形式で設定してください。エラー: ' + e.message);
+  }
   const titles = Object.keys(columnMap);
   const bookTitle = extBookTitle(message, titles);
   var startDate = getStartDate(event);
