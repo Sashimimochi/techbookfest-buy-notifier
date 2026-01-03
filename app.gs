@@ -245,11 +245,11 @@ function getPriceFromMaster(distributionFormat, bookTitle) {
     // ヘッダー行をスキップして検索
     for (var i = 1; i < data.length; i++) {
       const row = data[i];
-      const masterBookTitle = row[0];
-      const masterFormat = row[1];
+      const masterBookTitle = String(row[0]).trim();
+      const masterFormat = String(row[1]).trim();
       const price = row[2];
       
-      if (masterBookTitle === bookTitle && masterFormat === distributionFormat) {
+      if (masterBookTitle === bookTitle.trim() && masterFormat === distributionFormat.trim()) {
         return parseInt(price);
       }
     }
@@ -375,6 +375,7 @@ function writeDatesFromStartDate(sheetName) {
   
   const startDate = getStartDate(sheetName);
   const diffDays = calcDiffDates(startDate);
+  const today = new Date();
 
   for (var i = 0; i < diffDays; i++) {
     var row = i + 2;
@@ -382,7 +383,6 @@ function writeDatesFromStartDate(sheetName) {
     cell.setValue(new Date(startDate.getTime() + i * (1000 * 3600 * 24)));
   }
   if (diffDays === 0) {
-    var today = new Date();
     var cell = sheet.getRange(2, 1);
     cell.setValue(today);
   }
@@ -510,6 +510,7 @@ function initializeHourlySheet(sheetName) {
     
     // ヘッダー行の設定
     const bookTitles = getBookTitles();
+    const bookCount = bookTitles.length;
     sheet.getRange(1, 1).setValue('時間帯');
     
     // 頒布数列のヘッダー
@@ -519,7 +520,7 @@ function initializeHourlySheet(sheetName) {
     
     // 売上列のヘッダー
     bookTitles.forEach((title, index) => {
-      sheet.getRange(1, index + 2 + bookTitles.length).setValue(title + ' 売上');
+      sheet.getRange(1, index + 2 + bookCount).setValue(title + ' 売上');
     });
     
     // 0-23時の行を事前に作成
@@ -662,6 +663,7 @@ function calcBuyData(message) {
   // メール受信時刻を取得
   const messageDate = message.getDate();
   
+  // 開始日と経過日数を取得（全シートで共通）
   var startDate = getStartDate(eventName);
   var diffDays = calcDiffDates(startDate);
   writeDatesFromStartDate(eventName);
@@ -672,10 +674,8 @@ function calcBuyData(message) {
   // 日別売上を記録
   const salesSheetName = getSalesSheetName(eventName);
   initializeSalesSheet(salesSheetName);
-  const salesStartDate = getStartDate(salesSheetName);
-  const salesDiffDays = calcDiffDates(salesStartDate);
   writeDatesFromStartDate(salesSheetName);
-  addCellValue(salesSheetName, salesDiffDays+1, bookTitle, columnMap, price);
+  addCellValue(salesSheetName, diffDays+1, bookTitle, columnMap, price);
   
   // 時間帯別集計（オフライン開催日当日のみ）
   if (isEventDay(messageDate, startDate)) {
@@ -686,7 +686,7 @@ function calcBuyData(message) {
   }
   
   createLineChartWithMultipleSeries(eventName, diffDays+1);
-  createLineChartWithMultipleSeries(salesSheetName, salesDiffDays+1);
+  createLineChartWithMultipleSeries(salesSheetName, diffDays+1);
 }
 
 /**
