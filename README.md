@@ -27,6 +27,7 @@ https://zenn.dev/sashimimochi/articles/98d1e41dd5123b
 | `SLACK_CHANNEL_ID` | 画像を投稿するSlackチャンネルID | `C0123456789` |
 | `SPREADSHEET_ID` | Google SpreadsheetのID | `1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms` |
 | `EVENT_SHEET_NAME` | イベント名（スプレッドシートのシート名） | `techbookfest16` |
+| `PRICE_MASTER_SHEET_NAME` | 価格マスタシート名（オプション、デフォルト: `price_master`） | `price_master` |
 
 ### 設定例
 
@@ -37,7 +38,46 @@ SLACK_BOT_TOKEN: xoxb-YOUR-BOT-TOKEN-HERE
 SLACK_CHANNEL_ID: C0123456789
 SPREADSHEET_ID: 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms
 EVENT_SHEET_NAME: techbookfest16
+PRICE_MASTER_SHEET_NAME: price_master
 ```
+
+### 価格マスタシートの設定
+
+価格マスタシートは、頒布形式ごとの価格を管理するためのシートです。以下の形式で作成してください。
+
+#### 価格マスタシートの構造
+
+| 書籍タイトル | 頒布形式 | 価格 |
+|------------|---------|------|
+| BookA | 電子版 | 500 |
+| BookA | 電子+紙 | 1000 |
+| BookB | 電子版 | 800 |
+| BookB | 電子+紙 | 1500 |
+
+- 1行目: ヘッダー行（書籍タイトル、頒布形式、価格）
+- 2行目以降: 各書籍の頒布形式ごとの価格データ
+
+**注意**: 
+- メール本文に「頒布価格: XXX円」の記載がある場合、メール本文の価格が優先されます
+- メール本文に価格の記載がない場合、価格マスタシートから頒布形式に基づいて価格を取得します
+- 価格が取得できない場合は、売上は0円として記録されます
+
+### 生成されるシート
+
+このスクリプトは以下のシートを自動生成します：
+
+1. **{イベント名}** (例: `techbookfest16`)
+   - 日別の頒布数を記録
+   - 各書籍の日別頒布数とグラフを表示
+
+2. **{イベント名}_sales** (例: `techbookfest16_sales`)
+   - 日別の売上を記録
+   - 各書籍の日別売上金額とグラフを表示
+
+3. **{イベント名}_hourly** (例: `techbookfest16_hourly`)
+   - オフライン開催日当日の時間帯別集計（0-23時）
+   - 各書籍の時間帯別頒布数と売上を記録
+   - イベント開催日当日のメールのみ集計対象
 
 ### 注意事項
 
