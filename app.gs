@@ -214,6 +214,7 @@ function extMessage(texts) {
  */
 function extractPriceFromEmail(texts) {
   // メール本文から「頒布価格」を含む行を探す
+  // 全角コロン（：）と半角コロン（:）の両方に対応
   const pricePattern = /頒布価格[：:]\s*(\d+)\s*円/;
   for (var i = 0; i < texts.length; i++) {
     const match = texts[i].match(pricePattern);
@@ -375,7 +376,6 @@ function writeDatesFromStartDate(sheetName) {
   
   const startDate = getStartDate(sheetName);
   const diffDays = calcDiffDates(startDate);
-  const today = new Date();
 
   for (var i = 0; i < diffDays; i++) {
     var row = i + 2;
@@ -384,7 +384,7 @@ function writeDatesFromStartDate(sheetName) {
   }
   if (diffDays === 0) {
     var cell = sheet.getRange(2, 1);
-    cell.setValue(today);
+    cell.setValue(new Date());
   }
 }
 
@@ -488,9 +488,10 @@ function writeHourlyData(sheetName, hour, bookTitle, columnMap, price) {
   incrementCellValue(sheetName, targetRow, bookTitle, columnMap);
   
   // 売上を加算（書籍列 + オフセット）
+  const bookCount = getBookCount();
   const salesColumnMap = {};
   Object.keys(columnMap).forEach(key => {
-    salesColumnMap[key] = columnMap[key] + getBookCount();
+    salesColumnMap[key] = columnMap[key] + bookCount;
   });
   addCellValue(sheetName, targetRow, bookTitle, salesColumnMap, price);
 }
