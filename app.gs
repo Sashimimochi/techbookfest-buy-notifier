@@ -673,9 +673,16 @@ function calcBuyData(message) {
   
   // シートが初回作成の場合（A2が空）、メール受信日を開始日として設定
   const sheet = getTargetSheet(eventName);
-  if (sheet.getRange("A2").getValue() === "") {
+  const a2Value = sheet.getRange("A2").getValue();
+  Logger.log('A2セルの値: ' + a2Value + ' (型: ' + typeof a2Value + ')');
+  
+  if (a2Value === "") {
+    Logger.log('A2が空のため、メール受信日を開始日として設定します');
     startDate = messageDate;
     sheet.getRange("A2").setValue(messageDate);
+    Logger.log('A2に設定した値: ' + messageDate);
+  } else {
+    Logger.log('A2には既に値があります: ' + a2Value);
   }
   
   var diffDays = calcDiffDates(startDate);
@@ -700,13 +707,22 @@ function calcBuyData(message) {
   addCellValue(salesSheetName, targetRow, bookTitle, columnMap, price);
   
   // 時間帯別集計（オフライン開催日当日のみ）
+  Logger.log('時間帯別集計チェック: メール受信日=' + messageDate + ', イベント開催日=' + startDate);
+  Logger.log('メール受信日フォーマット: ' + Utilities.formatDate(messageDate, Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss'));
+  Logger.log('イベント開催日フォーマット: ' + Utilities.formatDate(startDate, Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss'));
+  
   if (isEventDay(messageDate, startDate)) {
+    Logger.log('時間帯別集計を実行します');
     const hourlySheetName = getHourlySheetName(eventName);
+    Logger.log('hourlyシート名: ' + hourlySheetName);
     initializeHourlySheet(hourlySheetName);
+    Logger.log('hourlyシート初期化完了');
     const hour = getHourFromDate(messageDate);
+    Logger.log('時間帯: ' + hour);
     writeHourlyData(hourlySheetName, hour, bookTitle, columnMap, price);
+    Logger.log('hourlyデータ書き込み完了');
   } else {
-    Logger.log('時間帯別集計をスキップ: メール受信日=' + messageDate + ', イベント開催日=' + startDate);
+    Logger.log('時間帯別集計をスキップ: 日付が一致しません');
   }
   
   createLineChartWithMultipleSeries(eventName, targetRow);
