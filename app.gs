@@ -664,12 +664,22 @@ function calcBuyData(message) {
   // メール受信時刻を取得
   const messageDate = message.getDate();
   
-  // 開始日と経過日数を取得（全シートで共通）
-  var startDate = getStartDate(eventName);
-  var diffDays = calcDiffDates(startDate);
-  
   // イベントシート（日別頒布数）を初期化
   initializeEventSheet(eventName);
+  
+  // 開始日と経過日数を取得（全シートで共通）
+  // 注: イベントシート作成後に呼び出す必要がある
+  var startDate = getStartDate(eventName);
+  
+  // シートが初回作成の場合（A2が空）、メール受信日を開始日として設定
+  const sheet = getTargetSheet(eventName);
+  if (sheet.getRange("A2").getValue() === "") {
+    startDate = messageDate;
+    sheet.getRange("A2").setValue(messageDate);
+  }
+  
+  var diffDays = calcDiffDates(startDate);
+  
   writeDatesFromStartDate(eventName);
   
   // 日別頒布数を記録（行番号 = diffDays + 2、1行目はヘッダー、2行目から日付データ）
@@ -679,6 +689,13 @@ function calcBuyData(message) {
   // 日別売上を記録
   const salesSheetName = getSalesSheetName(eventName);
   initializeSalesSheet(salesSheetName);
+  
+  // 売上シートのA2にも開始日を設定（イベントシートと同じ日付）
+  const salesSheet = getTargetSheet(salesSheetName);
+  if (salesSheet.getRange("A2").getValue() === "") {
+    salesSheet.getRange("A2").setValue(startDate);
+  }
+  
   writeDatesFromStartDate(salesSheetName);
   addCellValue(salesSheetName, targetRow, bookTitle, columnMap, price);
   
@@ -688,6 +705,8 @@ function calcBuyData(message) {
     initializeHourlySheet(hourlySheetName);
     const hour = getHourFromDate(messageDate);
     writeHourlyData(hourlySheetName, hour, bookTitle, columnMap, price);
+  } else {
+    Logger.log('時間帯別集計をスキップ: メール受信日=' + messageDate + ', イベント開催日=' + startDate);
   }
   
   createLineChartWithMultipleSeries(eventName, targetRow);
