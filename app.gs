@@ -672,14 +672,15 @@ function calcBuyData(message) {
   initializeEventSheet(eventName);
   writeDatesFromStartDate(eventName);
   
-  // 日別頒布数を記録
-  incrementCellValue(eventName, diffDays+1, bookTitle, columnMap);
+  // 日別頒布数を記録（行番号 = diffDays + 2、1行目はヘッダー、2行目から日付データ）
+  const targetRow = diffDays + 2;
+  incrementCellValue(eventName, targetRow, bookTitle, columnMap);
   
   // 日別売上を記録
   const salesSheetName = getSalesSheetName(eventName);
   initializeSalesSheet(salesSheetName);
   writeDatesFromStartDate(salesSheetName);
-  addCellValue(salesSheetName, diffDays+1, bookTitle, columnMap, price);
+  addCellValue(salesSheetName, targetRow, bookTitle, columnMap, price);
   
   // 時間帯別集計（オフライン開催日当日のみ）
   if (isEventDay(messageDate, startDate)) {
@@ -689,8 +690,8 @@ function calcBuyData(message) {
     writeHourlyData(hourlySheetName, hour, bookTitle, columnMap, price);
   }
   
-  createLineChartWithMultipleSeries(eventName, diffDays+1);
-  createLineChartWithMultipleSeries(salesSheetName, diffDays+1);
+  createLineChartWithMultipleSeries(eventName, targetRow);
+  createLineChartWithMultipleSeries(salesSheetName, targetRow);
 }
 
 /**
