@@ -48,6 +48,18 @@ function getEventName() {
 }
 
 /**
+ * スクリプトプロパティから価格マスタシート名を取得する
+ * @return {string} 価格マスタシート名
+ */
+function getPriceMasterSheetName() {
+  const properties = PropertiesService.getScriptProperties();
+  const sheetName = properties.getProperty('PRICE_MASTER_SHEET_NAME');
+  
+  // 設定されていない場合はデフォルト値を使用
+  return sheetName || 'price_master';
+}
+
+/**
  * スクリプトプロパティからSlack Webhook URLsを取得する
  * @return {Array<{url: string, postChart: boolean}>} Webhook URLの配列
  */
@@ -188,11 +200,94 @@ function extMessage(texts) {
   for (var i = 0; i < texts.length; i++) {
     for (var j = 0; j < keywords.length; j++) {
       if (texts[i].includes(keywords[j])) {
-        return keywords[j];
+        return decodeHtmlEntities(keywords[j]);
       }
     }
   }
   return "販売形態が見つかりません";
+}
+
+/**
+ * メール本文から価格を抽出する
+ * @param {Array<string>} texts メール本文の行配列
+ * @return {number|null} 価格（見つからない場合はnull）
+ */
+function extractPriceFromEmail(texts) {
+  // メール本文から「頒布価格」を含む行を探す
+  // 全角コロン（：）と半角コロン（:）の両方に対応
+  const pricePattern = /頒布価格[：:]\s*(\d+)\s*円/;
+  for (var i = 0; i < texts.length; i++) {
+    const match = texts[i].match(pricePattern);
+    if (match) {
+      return parseInt(match[1]);
+    }
+  }
+  return null;
+}
+
+/**
+ * 価格マスタシートから頒布形式に対応する価格を取得する
+ * @param {string} distributionFormat 頒布形式
+ * @param {string} bookTitle 書籍タイトル
+ * @return {number|null} 価格（見つからない場合はnull）
+ */
+function getPriceFromMaster(distributionFormat, bookTitle) {
+  try {
+    const priceMasterSheetName = getPriceMasterSheetName();
+    const sheet = getTargetSheet(priceMasterSheetName);
+    
+    if (!sheet) {
+      Logger.log('価格マスタシートが見つかりません: ' + priceMasterSheetName);
+      return null;
+    }
+    
+    const data = sheet.getDataRange().getValues();
+    
+    // ヘッダー行をスキップして検索
+    for (var i = 1; i < data.length; i++) {
+      const row = data[i];
+      const masterBookTitle = String(row[0]).trim();
+      const masterFormat = String(row[1]).trim();
+      const price = row[2];
+      
+      if (masterBookTitle === bookTitle.trim() && masterFormat === distributionFormat.trim()) {
+        return parseInt(price);
+      }
+    }
+    
+    Logger.log('価格マスタに該当データが見つかりません: ' + bookTitle + ', ' + distributionFormat);
+    return null;
+  } catch (e) {
+    Logger.log('価格マスタ取得エラー: ' + e.message);
+    return null;
+  }
+}
+
+/**
+ * 価格を取得する（メール本文優先、見つからない場合は価格マスタを参照）
+ * @param {GmailMessage} message メールメッセージ
+ * @param {string} distributionFormat 頒布形式
+ * @param {string} bookTitle 書籍タイトル
+ * @return {number} 価格（見つからない場合は0）
+ */
+function getPrice(message, distributionFormat, bookTitle) {
+  const texts = getMessageBodyAsText(message);
+  
+  // まずメール本文から価格を抽出
+  const priceFromEmail = extractPriceFromEmail(texts);
+  if (priceFromEmail !== null) {
+    return priceFromEmail;
+  }
+  
+  // メール本文に価格がない場合は価格マスタから取得
+  const priceFromMaster = getPriceFromMaster(distributionFormat, bookTitle);
+  if (priceFromMaster !== null) {
+    return priceFromMaster;
+  }
+  
+  // どちらも見つからない場合は0を返す
+  Logger.log('価格が取得できませんでした: ' + bookTitle + ', ' + distributionFormat);
+  return 0;
 }
 
 function decodeHtmlEntities(text) {
@@ -239,6 +334,17 @@ function getStartDate(sheetName) {
   // 集計の開始日を取得する
   // 基本的には技術書典の開催日
   var sheet = getTargetSheet(sheetName);
+  
+  // シートが存在しない場合やA2セルが空の場合は、イベントシートから取得
+  if (!sheet) {
+    const eventName = getEventName();
+    sheet = getTargetSheet(eventName);
+  }
+  
+  if (!sheet) {
+    // イベントシートも存在しない場合は今日の日付を返す
+    return new Date();
+  }
 
   var startDate = sheet.getRange("A2").getValue();
   if (startDate === "") {
@@ -262,6 +368,12 @@ function calcDiffDates(startDate) {
 function writeDatesFromStartDate(sheetName) {
   // 集計開始日から今日までの日付を埋める
   const sheet = getTargetSheet(sheetName);
+  
+  // シートが存在しない場合はスキップ
+  if (!sheet) {
+    return;
+  }
+  
   const startDate = getStartDate(sheetName);
   const diffDays = calcDiffDates(startDate);
 
@@ -272,7 +384,7 @@ function writeDatesFromStartDate(sheetName) {
   }
   if (diffDays === 0) {
     var cell = sheet.getRange(2, 1);
-    cell.setValue(today);
+    cell.setValue(new Date());
   }
 }
 
@@ -293,6 +405,130 @@ function incrementCellValue(sheetName, row, columName, columnMap) {
   var incrementValue = value + 1;
 
   cell.setValue(incrementValue);
+}
+
+/**
+ * セルの値に指定した金額を加算する（売上集計用）
+ * @param {string} sheetName シート名
+ * @param {number} row 行番号
+ * @param {string} columName 列名（書籍タイトル）
+ * @param {Object} columnMap 列マップ
+ * @param {number} amount 加算する金額
+ */
+function addCellValue(sheetName, row, columName, columnMap, amount) {
+  const sheet = getTargetSheet(sheetName);
+  const columnNumber = columnMap[columName];
+
+  if (!columnNumber) {
+    throw new Error("指定した書籍名は存在しません");
+  }
+
+  const cell = sheet.getRange(row, columnNumber);
+  const value = cell.getValue() || 0;
+  cell.setValue(value + amount);
+}
+
+/**
+ * メール受信時刻から時間帯を取得する（0-23）
+ * @param {Date} date 日付時刻
+ * @return {number} 時間（0-23）
+ */
+function getHourFromDate(date) {
+  return date.getHours();
+}
+
+/**
+ * 時間帯別シート名を取得する
+ * @param {string} eventName イベント名
+ * @return {string} 時間帯別シート名
+ */
+function getHourlySheetName(eventName) {
+  return eventName + '_hourly';
+}
+
+/**
+ * 売上集計シート名を取得する
+ * @param {string} eventName イベント名
+ * @return {string} 売上集計シート名
+ */
+function getSalesSheetName(eventName) {
+  return eventName + '_sales';
+}
+
+/**
+ * 時間帯別シートに集計データを書き込む
+ * @param {string} sheetName シート名
+ * @param {number} hour 時間帯（0-23）
+ * @param {string} bookTitle 書籍タイトル
+ * @param {Object} columnMap 列マップ
+ * @param {number} price 価格
+ */
+function writeHourlyData(sheetName, hour, bookTitle, columnMap, price) {
+  const sheet = getTargetSheet(sheetName);
+  
+  // 時間帯の行を探す（A列に時間帯が記録されている）
+  const lastRow = Math.max(sheet.getLastRow(), 1);
+  var targetRow = -1;
+  
+  for (var i = 2; i <= lastRow; i++) {
+    const cellValue = sheet.getRange(i, 1).getValue();
+    if (cellValue === hour) {
+      targetRow = i;
+      break;
+    }
+  }
+  
+  // 該当時間帯の行が見つからない場合は新規追加
+  if (targetRow === -1) {
+    targetRow = lastRow + 1;
+    sheet.getRange(targetRow, 1).setValue(hour);
+  }
+  
+  // 頒布数をインクリメント（書籍列）
+  incrementCellValue(sheetName, targetRow, bookTitle, columnMap);
+  
+  // 売上を加算（書籍列 + オフセット）
+  const bookCount = getBookCount();
+  const salesColumnMap = {};
+  Object.keys(columnMap).forEach(key => {
+    salesColumnMap[key] = columnMap[key] + bookCount;
+  });
+  addCellValue(sheetName, targetRow, bookTitle, salesColumnMap, price);
+}
+
+/**
+ * 時間帯別シートを初期化する
+ * @param {string} sheetName シート名
+ */
+function initializeHourlySheet(sheetName) {
+  const spreadsheetId = getSpreadsheetId();
+  const spread = SpreadsheetApp.openById(spreadsheetId);
+  var sheet = spread.getSheetByName(sheetName);
+  
+  // シートが存在しない場合は作成
+  if (!sheet) {
+    sheet = spread.insertSheet(sheetName);
+    
+    // ヘッダー行の設定
+    const bookTitles = getBookTitles();
+    const bookCount = bookTitles.length;
+    sheet.getRange(1, 1).setValue('時間帯');
+    
+    // 頒布数列のヘッダー
+    bookTitles.forEach((title, index) => {
+      sheet.getRange(1, index + 2).setValue(title + ' 頒布数');
+    });
+    
+    // 売上列のヘッダー
+    bookTitles.forEach((title, index) => {
+      sheet.getRange(1, index + 2 + bookCount).setValue(title + ' 売上');
+    });
+    
+    // 0-23時の行を事前に作成
+    for (var hour = 0; hour < 24; hour++) {
+      sheet.getRange(hour + 2, 1).setValue(hour);
+    }
+  }
 }
 
 function createLineChartWithMultipleSeries(sheetName, maxRow) {
@@ -413,9 +649,140 @@ function calcBuyData(message) {
   const eventName = getEventName();
 
   const bookTitle = extBookTitle(message, titles);
+  if (!bookTitle) {
+    Logger.log('書籍タイトルが見つかりません');
+    return;
+  }
+  
+  // 頒布形式を取得
+  const texts = getMessageBodyAsText(message);
+  const distributionFormat = extMessage(texts);
+  
+  // 価格を取得
+  const price = getPrice(message, distributionFormat, bookTitle);
+  
+  // メール受信時刻を取得
+  const messageDate = message.getDate();
+  
+  // イベントシート（日別頒布数）を初期化
+  initializeEventSheet(eventName);
+  
+  // 開始日と経過日数を取得（全シートで共通）
+  // 注: イベントシート作成後に呼び出す必要がある
   var startDate = getStartDate(eventName);
+  
+  // シートが初回作成の場合（A2が空）、メール受信日を開始日として設定
+  const sheet = getTargetSheet(eventName);
+  const a2Value = sheet.getRange("A2").getValue();
+  Logger.log('A2セルの値: ' + a2Value + ' (型: ' + typeof a2Value + ')');
+  
+  if (a2Value === "") {
+    Logger.log('A2が空のため、メール受信日を開始日として設定します');
+    startDate = messageDate;
+    sheet.getRange("A2").setValue(messageDate);
+    Logger.log('A2に設定した値: ' + messageDate);
+  } else {
+    Logger.log('A2には既に値があります: ' + a2Value);
+  }
+  
   var diffDays = calcDiffDates(startDate);
+  
   writeDatesFromStartDate(eventName);
-  incrementCellValue(eventName, diffDays+1, bookTitle, columnMap);
-  createLineChartWithMultipleSeries(eventName, diffDays+1);
+  
+  // 日別頒布数を記録（行番号 = diffDays + 2、1行目はヘッダー、2行目から日付データ）
+  const targetRow = diffDays + 2;
+  incrementCellValue(eventName, targetRow, bookTitle, columnMap);
+  
+  // 日別売上を記録
+  const salesSheetName = getSalesSheetName(eventName);
+  initializeSalesSheet(salesSheetName);
+  
+  // 売上シートのA2にも開始日を設定（イベントシートと同じ日付）
+  const salesSheet = getTargetSheet(salesSheetName);
+  if (salesSheet.getRange("A2").getValue() === "") {
+    salesSheet.getRange("A2").setValue(startDate);
+  }
+  
+  writeDatesFromStartDate(salesSheetName);
+  addCellValue(salesSheetName, targetRow, bookTitle, columnMap, price);
+  
+  // 時間帯別集計（オフライン開催日当日のみ）
+  Logger.log('時間帯別集計チェック: メール受信日=' + messageDate + ', イベント開催日=' + startDate);
+  Logger.log('メール受信日フォーマット: ' + Utilities.formatDate(messageDate, Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss'));
+  Logger.log('イベント開催日フォーマット: ' + Utilities.formatDate(startDate, Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss'));
+  
+  if (isEventDay(messageDate, startDate)) {
+    Logger.log('時間帯別集計を実行します');
+    const hourlySheetName = getHourlySheetName(eventName);
+    Logger.log('hourlyシート名: ' + hourlySheetName);
+    initializeHourlySheet(hourlySheetName);
+    Logger.log('hourlyシート初期化完了');
+    const hour = getHourFromDate(messageDate);
+    Logger.log('時間帯: ' + hour);
+    writeHourlyData(hourlySheetName, hour, bookTitle, columnMap, price);
+    Logger.log('hourlyデータ書き込み完了');
+  } else {
+    Logger.log('時間帯別集計をスキップ: 日付が一致しません');
+  }
+  
+  createLineChartWithMultipleSeries(eventName, targetRow);
+  createLineChartWithMultipleSeries(salesSheetName, targetRow);
+}
+
+/**
+ * イベントシート（日別頒布数シート）を初期化する
+ * @param {string} sheetName シート名
+ */
+function initializeEventSheet(sheetName) {
+  const spreadsheetId = getSpreadsheetId();
+  const spread = SpreadsheetApp.openById(spreadsheetId);
+  var sheet = spread.getSheetByName(sheetName);
+  
+  // シートが存在しない場合は作成
+  if (!sheet) {
+    sheet = spread.insertSheet(sheetName);
+    
+    // ヘッダー行の設定
+    const bookTitles = getBookTitles();
+    sheet.getRange(1, 1).setValue('日付');
+    
+    bookTitles.forEach((title, index) => {
+      sheet.getRange(1, index + 2).setValue(title);
+    });
+  }
+}
+
+/**
+ * 売上集計シートを初期化する
+ * @param {string} sheetName シート名
+ */
+function initializeSalesSheet(sheetName) {
+  const spreadsheetId = getSpreadsheetId();
+  const spread = SpreadsheetApp.openById(spreadsheetId);
+  var sheet = spread.getSheetByName(sheetName);
+  
+  // シートが存在しない場合は作成
+  if (!sheet) {
+    sheet = spread.insertSheet(sheetName);
+    
+    // ヘッダー行の設定
+    const bookTitles = getBookTitles();
+    sheet.getRange(1, 1).setValue('日付');
+    
+    bookTitles.forEach((title, index) => {
+      sheet.getRange(1, index + 2).setValue(title);
+    });
+  }
+}
+
+/**
+ * 指定日時がイベント開催日かどうかを判定する
+ * @param {Date} date 判定する日時
+ * @param {Date} eventStartDate イベント開始日
+ * @return {boolean} イベント開催日の場合true
+ */
+function isEventDay(date, eventStartDate) {
+  const dateStr = Utilities.formatDate(date, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  const eventDateStr = Utilities.formatDate(eventStartDate, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  return dateStr === eventDateStr;
 }
