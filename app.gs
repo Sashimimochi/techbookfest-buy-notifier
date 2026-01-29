@@ -667,6 +667,9 @@ function calcBuyData(message) {
   // 開始日と経過日数を取得（全シートで共通）
   var startDate = getStartDate(eventName);
   var diffDays = calcDiffDates(startDate);
+  
+  // イベントシート（日別頒布数）を初期化
+  initializeEventSheet(eventName);
   writeDatesFromStartDate(eventName);
   
   // 日別頒布数を記録
@@ -688,6 +691,29 @@ function calcBuyData(message) {
   
   createLineChartWithMultipleSeries(eventName, diffDays+1);
   createLineChartWithMultipleSeries(salesSheetName, diffDays+1);
+}
+
+/**
+ * イベントシート（日別頒布数シート）を初期化する
+ * @param {string} sheetName シート名
+ */
+function initializeEventSheet(sheetName) {
+  const spreadsheetId = getSpreadsheetId();
+  const spread = SpreadsheetApp.openById(spreadsheetId);
+  var sheet = spread.getSheetByName(sheetName);
+  
+  // シートが存在しない場合は作成
+  if (!sheet) {
+    sheet = spread.insertSheet(sheetName);
+    
+    // ヘッダー行の設定
+    const bookTitles = getBookTitles();
+    sheet.getRange(1, 1).setValue('日付');
+    
+    bookTitles.forEach((title, index) => {
+      sheet.getRange(1, index + 2).setValue(title);
+    });
+  }
 }
 
 /**
